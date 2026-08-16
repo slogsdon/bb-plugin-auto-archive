@@ -3,6 +3,12 @@
 A BB plugin that keeps your thread list clean by **auto-archiving threads
 that have had no activity for a configurable number of days** (default 2).
 
+## Screenshots
+
+![auto-archive](docs/screenshot.png)
+
+*The plugin's settings page: inactivity threshold and archive policy.*
+
 ## What it's for
 
 Thread lists accumulate. An issue you investigated once, a one-off question
