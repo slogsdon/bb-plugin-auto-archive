@@ -1,0 +1,35 @@
+{
+  "name": "bb-plugin-auto-archive",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "engines": {
+    "bb": ">=0.38",
+    "bbPluginSdk": ">=0.4.6"
+  },
+  "bb": {
+    "name": "Auto Archive",
+    "description": "Auto-archives threads that have seen no activity for a configurable number of days.",
+    "branding": {
+      "icon": "Archive"
+    },
+    "server": "./server.ts"
+  },
+  "dependencies": {
+    "zod": "^4.3.6"
+  },
+  "scripts": {
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "@get-bb/plugin-sdk": "0.4.6",
+    "@types/better-sqlite3": "^7.6.12",
+    "@types/node": "^22.0.0",
+    "@types/react": "^19.0.0",
+    "better-sqlite3": "^12.0.0",
+    "cron-parser": "^5.10.0",
+    "hono": "^4.11.9",
+    "typescript": "^5.7.0",
+    "vitest": "^3.2.7"
+  }
+}
