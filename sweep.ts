@@ -29,6 +29,12 @@ export interface SweepConfig {
   archiveHidden: boolean;
   /** Also archive threads with work in flight (starting/active/stopping). */
   archiveRunning: boolean;
+  /**
+   * Epoch ms of the initial install. Threads whose last activity predates
+   * this (i.e. a pre-existing backlog that was already idle when the plugin
+   * was installed) are never auto-archived. 0 disables the guard.
+   */
+  sinceInstallAt: number;
 }
 
 export interface SweepStats {
@@ -54,6 +60,11 @@ export interface SweepStats {
  * - Threads with work in flight (starting/active/stopping) are skipped
  *   unless `archiveRunning`, because archiving stops running work.
  * - Pinned and hidden threads are skipped unless opted in.
+ * - A fresh install never nukes a pre-existing backlog: threads whose last
+ *   activity (`latestAttentionAt`) predates `sinceInstallAt` are skipped,
+ *   so only threads that become idle after install are ever candidates.
+ *   Combined with the inactivity cutoff this also means nothing is archived
+ *   until the full window has elapsed since install.
  */
 export function selectThreadsToArchive<T extends ThreadActivitySnapshot>(
   threads: readonly T[],
@@ -61,6 +72,7 @@ export function selectThreadsToArchive<T extends ThreadActivitySnapshot>(
   now: number,
 ): T[] {
   const cutoff = now - config.inactivityDays * DAY_MS;
+  const since = config.sinceInstallAt ?? 0;
   return threads.filter((thread) => {
     if (thread.archivedAt !== null || thread.deletedAt !== null) {
       return false;
@@ -79,6 +91,9 @@ export function selectThreadsToArchive<T extends ThreadActivitySnapshot>(
       thread.status !== "error" &&
       !config.archiveRunning
     ) {
+      return false;
+    }
+    if (thread.latestAttentionAt < since) {
       return false;
     }
     return thread.latestAttentionAt <= cutoff;

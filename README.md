@@ -27,13 +27,22 @@ on, waiting on, or keeping handy gets touched.
 bb plugin install git:https://github.com/slogsdon/bb-plugin-auto-archive.git
 ```
 
-That's it — the plugin sweeps once on install and then hourly. Check what it
-has done:
+That's it — the plugin records an install timestamp and sweeps hourly. Check
+what it has done:
 
 ```sh
 bb auto-archive status          # current config + last sweep result
 bb auto-archive run --dry-run   # preview what the next sweep would archive
 ```
+
+### First-run safety
+
+A fresh install is deliberately conservative: it records when it was
+installed and **only considers threads that became idle after that point**.
+Threads that were already sitting idle in your backlog when you installed
+are never auto-archived, and nothing is touched until the full inactivity
+window has elapsed since install. So enabling it on a stale list of threads
+won't silently archive them behind your back.
 
 ## What counts as activity
 
@@ -47,6 +56,7 @@ A thread is only a candidate when *all* of these hold:
 | Condition | Default |
 | --- | --- |
 | No activity for the full window (`latestAttentionAt` older than threshold) | required |
+| Last activity happened **after** the plugin was installed | required |
 | Root thread — child threads are never archived directly; they follow their parent's archive | required |
 | Not pinned | skipped unless `archivePinned` |
 | Not a hidden background-worker thread | skipped unless `archiveHidden` |
@@ -65,7 +75,8 @@ bb plugin config auto-archive set dryRun true          # log candidates, never a
 
 Settings are re-read on every sweep, so changes apply on the next hourly run
 without a reload. `dryRun` is the safe way to preview before enabling
-anything aggressive.
+anything aggressive. New installs only watch threads that go idle after
+install; pre-existing idle threads are never archived.
 
 ## CLI
 

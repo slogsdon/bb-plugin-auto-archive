@@ -1,6 +1,6 @@
 {
   "name": "bb-plugin-auto-archive",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Auto-archives threads that have seen no activity for a configurable number of days.",
   "license": "MIT",
   "repository": {

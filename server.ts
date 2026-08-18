@@ -121,7 +121,10 @@ export default async function plugin(bb: BbPluginApi) {
       type: "string",
       label: "Inactivity threshold (days)",
       description:
-        "Archive threads whose last activity is older than this many days.",
+        "Archive threads whose last activity is older than this many days. " +
+        "Only threads that went idle AFTER this plugin was installed are " +
+        "ever archived — a pre-existing backlog is left untouched, and " +
+        "nothing happens until the threshold has elapsed since install.",
       default: "2",
     },
     archivePinned: {
@@ -158,12 +161,14 @@ export default async function plugin(bb: BbPluginApi) {
 
   async function resolveConfig(): Promise<ResolvedSweepConfig> {
     const values = await settings.get();
+    const installedAt = await ensureInstalledAt(bb);
     return {
       inactivityDays: parseInactivityDays(values.inactivityDays),
       archivePinned: values.archivePinned,
       archiveHidden: values.archiveHidden,
       archiveRunning: values.archiveRunning,
       dryRun: values.dryRun,
+      sinceInstallAt: installedAt,
     };
   }
 
@@ -230,6 +235,7 @@ export default async function plugin(bb: BbPluginApi) {
           `archive hidden: ${config.archiveHidden}`,
           `archive running: ${config.archiveRunning}`,
           `dry run: ${config.dryRun}`,
+          `installed: ${new Date(config.sinceInstallAt).toISOString()}`,
         ];
         if (last) {
           lines.push(
@@ -255,4 +261,26 @@ function formatStats(stats: SweepStats): string {
     `scanned ${stats.scanned}, candidates ${stats.candidates}, ` +
     `archived ${stats.archived}, errors ${stats.errors}${suffix}`
   );
+}
+
+const INSTALLED_AT_KEY = "installed-at";
+
+/**
+ * Return the epoch ms the plugin was first installed, recording it on first
+ * load. The timestamp persists across updates, so a pre-install backlog stays
+ * protected even after the plugin is upgraded.
+ */
+async function ensureInstalledAt(bb: BbPluginApi): Promise<number> {
+  const existing = await bb.storage.kv.get<number>(INSTALLED_AT_KEY);
+  if (typeof existing === "number") {
+    return existing;
+  }
+  const now = Date.now();
+  await bb.storage.kv.set(INSTALLED_AT_KEY, now);
+  bb.log.info(
+    `first run — recording install time ${new Date(now).toISOString()}; ` +
+      "threads that were already idle before install will never be " +
+      "auto-archived",
+  );
+  return now;
 }

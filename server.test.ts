@@ -27,6 +27,7 @@ function config(
     archiveHidden: false,
     archiveRunning: false,
     dryRun: false,
+    sinceInstallAt: 0,
     ...overrides,
   };
 }
@@ -129,6 +130,32 @@ describe("selectThreadsToArchive", () => {
   it("archives stale error threads by default (settled, not running)", () => {
     const errored = thread({ id: "th_error", status: "error" });
     expect(selectThreadsToArchive([errored], config(), NOW)).toEqual([errored]);
+  });
+
+  it("never touches threads that went idle before install", () => {
+    const since = NOW - 3 * DAY_MS;
+    const preExisting = thread({ latestAttentionAt: NOW - 5 * DAY_MS }); // older than install
+    expect(
+      selectThreadsToArchive([preExisting], config({ sinceInstallAt: since }), NOW),
+    ).toEqual([]);
+  });
+
+  it("still archives threads that went idle after install", () => {
+    const postInstall = thread({
+      latestAttentionAt: NOW - 3 * DAY_MS,
+    });
+    const since = NOW - 10 * DAY_MS; // installed well before the window
+    expect(
+      selectThreadsToArchive([postInstall], config({ sinceInstallAt: since }), NOW),
+    ).toEqual([postInstall]);
+  });
+
+  it("protects a pre-install backlog while the guard is on", () => {
+    const backlog = thread({ latestAttentionAt: NOW - 10 * DAY_MS });
+    const since = NOW - 1 * DAY_MS; // only ~1 day since install — window not elapsed
+    expect(
+      selectThreadsToArchive([backlog], config({ sinceInstallAt: since }), NOW),
+    ).toEqual([]);
   });
 });
 
@@ -258,8 +285,25 @@ describe("factory registrations", () => {
     ]);
   });
 
-  it("sweeper service runs a sweep on start and stops on abort", async () => {
+  it("sweeper first run records install time and leaves a backlog alone", async () => {
     const { bb, harness } = makeHost([thread({ id: "th_stale" })]);
+    await plugin(bb);
+
+    const { controller, done } = harness.behavior.runService("sweeper");
+    // Wait until the first sweep has recorded the install time (which is what
+    // also runs the guard), then confirm the pre-install backlog was untouched.
+    await vi.waitFor(async () => {
+      expect(await bb.storage.kv.get("installed-at")).toBeTypeOf("number");
+    });
+    expect(harness.inspection.sdk.callsTo("threads.archive")).toEqual([]);
+    controller.abort();
+    await done;
+  });
+
+  it("sweeper archives backlog once the install guard has elapsed", async () => {
+    const { bb, harness } = makeHost([thread({ id: "th_stale" })]);
+    // Installed well before the stale thread's last activity.
+    await bb.storage.kv.set("installed-at", NOW - 10 * DAY_MS);
     await plugin(bb);
 
     const { controller, done } = harness.behavior.runService("sweeper");
