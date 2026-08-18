@@ -10,6 +10,7 @@ var HOUR_MS = 60 * 6e4;
 var DAY_MS = 24 * HOUR_MS;
 function selectThreadsToArchive(threads, config, now) {
   const cutoff = now - config.inactivityDays * DAY_MS;
+  const since = config.sinceInstallAt ?? 0;
   return threads.filter((thread) => {
     if (thread.archivedAt !== null || thread.deletedAt !== null) {
       return false;
@@ -24,6 +25,9 @@ function selectThreadsToArchive(threads, config, now) {
       return false;
     }
     if (thread.status !== "idle" && thread.status !== "error" && !config.archiveRunning) {
+      return false;
+    }
+    if (thread.latestAttentionAt < since) {
       return false;
     }
     return thread.latestAttentionAt <= cutoff;
@@ -120,7 +124,7 @@ async function plugin(bb) {
     inactivityDays: {
       type: "string",
       label: "Inactivity threshold (days)",
-      description: "Archive threads whose last activity is older than this many days.",
+      description: "Archive threads whose last activity is older than this many days. Only threads that went idle AFTER this plugin was installed are ever archived \u2014 a pre-existing backlog is left untouched, and nothing happens until the threshold has elapsed since install.",
       default: "2"
     },
     archivePinned: {
@@ -150,12 +154,14 @@ async function plugin(bb) {
   });
   async function resolveConfig() {
     const values = await settings.get();
+    const installedAt = await ensureInstalledAt(bb);
     return {
       inactivityDays: parseInactivityDays(values.inactivityDays),
       archivePinned: values.archivePinned,
       archiveHidden: values.archiveHidden,
       archiveRunning: values.archiveRunning,
-      dryRun: values.dryRun
+      dryRun: values.dryRun,
+      sinceInstallAt: installedAt
     };
   }
   bb.background.service("sweeper", {
@@ -214,7 +220,8 @@ async function plugin(bb) {
           `archive pinned: ${config.archivePinned}`,
           `archive hidden: ${config.archiveHidden}`,
           `archive running: ${config.archiveRunning}`,
-          `dry run: ${config.dryRun}`
+          `dry run: ${config.dryRun}`,
+          `installed: ${new Date(config.sinceInstallAt).toISOString()}`
         ];
         if (last) {
           lines.push(
@@ -236,6 +243,19 @@ async function plugin(bb) {
 function formatStats(stats) {
   const suffix = stats.dryRun ? " (dry run)" : "";
   return `scanned ${stats.scanned}, candidates ${stats.candidates}, archived ${stats.archived}, errors ${stats.errors}${suffix}`;
+}
+var INSTALLED_AT_KEY = "installed-at";
+async function ensureInstalledAt(bb) {
+  const existing = await bb.storage.kv.get(INSTALLED_AT_KEY);
+  if (typeof existing === "number") {
+    return existing;
+  }
+  const now = Date.now();
+  await bb.storage.kv.set(INSTALLED_AT_KEY, now);
+  bb.log.info(
+    `first run \u2014 recording install time ${new Date(now).toISOString()}; threads that were already idle before install will never be auto-archived`
+  );
+  return now;
 }
 export {
   plugin as default,
